@@ -6,7 +6,7 @@ CFLAGS="-g -O0 -std=c11 --static -D_CRT_SECURE_NO_WARNINGS
         -lkernel32 -lgdi32 -luser32 -lruntimeobject
         -lwinmm -ld3d11 -ldxguid -ld3dcompiler 
         -lshlwapi -lole32 -lavrt -lksuser -ldbghelp
-        -lshcore"
+        -lshcore -mamx-int8"
 SRC=../build.c
 EXENAME=game.exe
 
