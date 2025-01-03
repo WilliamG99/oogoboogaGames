@@ -1142,6 +1142,11 @@ static float square(float x)
    return x*x;
 }
 
+static float cube(float x)
+{
+   return x*x*x;
+}
+
 // this is a weird definition of log2() for which log2(1) = 1, log2(2) = 2, log2(4) = 3
 // as required by the specification. fast(?) implementation from stb.h
 // @OPTIMIZE: called multiple times per-packet with "constants"; move to setup
