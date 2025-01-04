@@ -1,11 +1,11 @@
 #define GRAVITY 9.81
-#define BOUNCE_DAMPING 0.9
+#define BOUNCE_DAMPING 0.75
 
-#define SMOOTHING_RADIUS 10.0
-#define PARTICLE_MASS 7.0
+#define SMOOTHING_RADIUS 1.2
+#define PARTICLE_MASS 1.5
 
-#define REST_DENSITY 0.5
-#define PRESSURE_CONSTANT 10.0
+#define REST_DENSITY 2.75
+#define PRESSURE_CONSTANT 0.5
 
 typedef enum EntityArchetype {
 	arch_nil = 0,
@@ -62,6 +62,9 @@ void setup_particle(Entity* en) {
 	en->mass = PARTICLE_MASS;
 	en->position = v2(0.0, 0.0);
 	en->velocity = v2(0.0, 0.0);
+	en->density = 0.0f;
+	en->pressure = 0.0f;
+	en->pressure_force = v2(0.0f, 0.0f);
 }
 
 void setup_boundary(Entity* en) {
@@ -82,7 +85,7 @@ int entry(int argc, char **argv) {
 	Entity* particle_en = entity_create();
 	setup_particle(particle_en);
 
-    for (int i = 0; i < 100	; i++) {
+    for (int i = 0; i < 1000	; i++) {
         Entity* en = entity_create();
         setup_particle(en);
         en->position = v2(get_random_float32_in_range(-10.0, 10.0), get_random_float32_in_range(-10.0, 10.0));
@@ -127,15 +130,32 @@ int entry(int argc, char **argv) {
 						// Particle Updates
 						// Velocity
 						//en->velocity = v2_add(en->velocity, v2_mulf(v2(0.0, -GRAVITY), delta_t));
-						//en->velocity = v2_add(en->velocity, en->pressure_acceleration);
-						en->velocity = v2_add(en->velocity, v2_mulf(en->pressure_acceleration, delta_t));
+						en->velocity = v2_add(en->velocity, en->pressure_acceleration);
+						//en->velocity = v2_add(en->velocity, v2_mulf(en->pressure_acceleration, delta_t));
 						// Position
-						//en->position = v2_add(en->position, v2_mulf(en->velocity, delta_t));
+						en->position = v2_add(en->position, v2_mulf(en->velocity, delta_t));
 
-						// // Simple Collision w/ BoundaryFloor
-						// if (en->position.y < -50.0) {
-						// 	en->velocity.y = -(en->velocity.y * BOUNCE_DAMPING);
-						// }
+						// Simple Collision w/ BoundaryFloor
+						if (en->position.y <= -50.0) {
+							en->position.y = -49.9;
+							en->velocity.y = -(en->velocity.y * BOUNCE_DAMPING);
+						}
+						else if (en->position.y >= 50.0)
+						{
+							en->position.y = 49.9;
+							en->velocity.y = -(en->velocity.y * BOUNCE_DAMPING);
+						}
+						else if (en->position.x <= -50.0)
+						{
+							en->position.x = -49.9;
+							en->velocity.x = -(en->velocity.y * BOUNCE_DAMPING);
+						}
+						else if (en->position.x >= 50.0)
+						{
+							en->position.x = 49.9;
+							en->velocity.x = -(en->velocity.y * BOUNCE_DAMPING);
+						}
+						
 
 						// Particle Transform
 						Vector2 size	= v2(1.0,1.0);
@@ -192,7 +212,7 @@ int entry(int argc, char **argv) {
 
 									case arch_particle:
 
-										if(en == en_neighbour){break;}
+										if(en == en_neighbour || en_neighbour->density == 0.0f){break;}
 
 										float32 distance = v2_length(v2_sub(en_neighbour->position, en->position));
 										Vector2 rij_normal = v2_normalize(v2_sub(en_neighbour->position, en->position));
