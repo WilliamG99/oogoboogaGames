@@ -1,11 +1,11 @@
 #define GRAVITY 9.81
 #define BOUNCE_DAMPING 0.9
 
-#define SMOOTHING_RADIUS 2.5
-#define PARTICLE_MASS 1.0
+#define SMOOTHING_RADIUS 10.0
+#define PARTICLE_MASS 7.0
 
-#define REST_DENSITY 2.75
-#define PRESSURE_CONSTANT 0.5 //Stiffness
+#define REST_DENSITY 0.5
+#define PRESSURE_CONSTANT 10.0
 
 typedef enum EntityArchetype {
 	arch_nil = 0,
@@ -68,28 +68,6 @@ void setup_boundary(Entity* en) {
 	en->arch = arch_boundary;
 }
 
-// Simulation and Calculation Functions
-// Smoothing Kernel
-static float32 SmoothingKernel(float32 distance) {
-	if (distance >= SMOOTHING_RADIUS) {return 0.0f;}
-    float64 volume = (PI32 * powf(SMOOTHING_RADIUS, 4.0f)) / 6.0f;
-    float32 term = (SMOOTHING_RADIUS - distance) * (SMOOTHING_RADIUS - distance) / volume;
-
-	// log("volume: %f", volume);
-	// log("Term: %f", term);
-
-	// log("MAth: %f", powf(SMOOTHING_RADIUS, 4.0));
-
-    return term;
-}
-
-static float32 SmoothingKernelDerivative(float32 distance) {
-	if (distance >= SMOOTHING_RADIUS) {return 0.0f;}
-	float32 scale = 12 / (powf(SMOOTHING_RADIUS, 4.0) * PI32);
-	return (distance - SMOOTHING_RADIUS) * scale;
-}
-
-
 int entry(int argc, char **argv) {
 	window.title = STR("FluidSim");
 	window.width = 1280;
@@ -120,6 +98,10 @@ int entry(int argc, char **argv) {
 	float64 seconds_counter = 0.0;
 	s32 frame_count = 0;
 
+	// Smoothing Kernels and their Gradients.
+	const float32 kernel = (4.0f / (PI32 * powf(SMOOTHING_RADIUS, 8.0f)));
+	const float32 kernel_derivative = -10.0f / (PI32 * powf(SMOOTHING_RADIUS, 5.0f));
+
 	float64 last_time = os_get_current_time_in_seconds();
 	while (!window.should_close) {
 		reset_temporary_storage();
@@ -145,6 +127,7 @@ int entry(int argc, char **argv) {
 						// Particle Updates
 						// Velocity
 						//en->velocity = v2_add(en->velocity, v2_mulf(v2(0.0, -GRAVITY), delta_t));
+						//en->velocity = v2_add(en->velocity, en->pressure_acceleration);
 						en->velocity = v2_add(en->velocity, v2_mulf(en->pressure_acceleration, delta_t));
 						// Position
 						//en->position = v2_add(en->position, v2_mulf(en->velocity, delta_t));
@@ -163,7 +146,9 @@ int entry(int argc, char **argv) {
 
 						// Reset Particle Properties
 						//log("Density: %f", en->density);
-						en->density = 0.0;
+						en->density = 0.0f;
+						en->pressure = 0.0f;
+						en->pressure_force = v2(0.0f, 0.0f);
 
 						// Search Neighbour Particles to Calculate Density
 						for (int j = 0; j < MAX_ENTITY_COUNT; j++) {
@@ -175,20 +160,19 @@ int entry(int argc, char **argv) {
 									case arch_particle:
 
 										// Calculate Density
-										float32 distance = v2_length(v2_sub(en->position, en_neighbour->position));
-
-										if (distance != 0.0)
-										{
-											float32 influence = SmoothingKernel(distance);
-
-											en->density += en->mass * influence;
-
-											// // Debug logging
-											// log("Particle %d -> Neighbor %d", i, j);
-											// log("    Distance: %f", distance);
-											// log("    Influence: %f", influence);
-											// log("    Density so far: %f", en->density);
+										float32 distance = v2_length(v2_sub(en_neighbour->position, en->position));
+										float32 sqrd_distance = square(distance);
+										
+										if (sqrd_distance < square(SMOOTHING_RADIUS)) {
+											en->density += PARTICLE_MASS * kernel * powf(square(SMOOTHING_RADIUS)-sqrd_distance, 3.0f);
 										}
+
+										// log("Pos1: %f, %f", en_neighbour->position.x, en_neighbour->position.y);
+										// log("Pos2: %f, %f", en->position.x, en->position.y);
+										// log("Sub: %f, %f", sub.x, sub.y);
+										// log("Distance: %f", distance);
+
+										break;
 
 									default:
 										break;
@@ -198,12 +182,8 @@ int entry(int argc, char **argv) {
 
 						// Calculate Pressure
 						en->pressure = PRESSURE_CONSTANT * (en->density - REST_DENSITY);
-						//log("    Pressure so far: %f", en->pressure);
 
-						// Reset Pressure Force
-						en->pressure_force = v2_zero;
-
-						// Search Neighbour Particles to Pressure Force
+						// Search Neighbour Particles to Calculate Forces
 						for (int j = 0; j < MAX_ENTITY_COUNT; j++) {
 							Entity* en_neighbour = &world->entities[j];
 							if (en_neighbour->is_valid) {
@@ -211,19 +191,16 @@ int entry(int argc, char **argv) {
 								switch (en_neighbour->arch) {
 
 									case arch_particle:
-										
-										if (en == en_neighbour) {
-											break;
+
+										if(en == en_neighbour){break;}
+
+										float32 distance = v2_length(v2_sub(en_neighbour->position, en->position));
+										Vector2 rij_normal = v2_normalize(v2_sub(en_neighbour->position, en->position));
+
+										if (distance < SMOOTHING_RADIUS){
+											// Compute pressure force contribution
+											en->pressure_force = v2_add(en->pressure_force, v2_mulf(rij_normal, PARTICLE_MASS * (en->pressure + en_neighbour->pressure) / (2.0f * en_neighbour->density) * kernel_derivative * powf(SMOOTHING_RADIUS - distance, 3.0f)));
 										}
-
-										// Calculate Pressure Force
-										float32 distance = v2_length(v2_sub(en->position, en_neighbour->position));
-										Vector2 direction = v2_divf(v2_sub(en->position, en_neighbour->position),distance);
-										float32 slope = SmoothingKernelDerivative(distance);
-
-										//log("Slope: %f", slope);
-
-										en->pressure_force = v2_add(v2_divf(v2_mulf(direction, en_neighbour->pressure * slope * PARTICLE_MASS), en_neighbour->density), en->pressure_force);
 
 										break;
 
@@ -233,16 +210,8 @@ int entry(int argc, char **argv) {
 							}
 						}
 
-						// Reset Pressure Force Acceleration
-						//en->pressure_acceleration = v2_zero;
-
-						// Calculate Pressure Force Acceleration
+						// Apply Forces
 						en->pressure_acceleration = v2_divf(en->pressure_force, en->density);
-
-
-						// log("Density: %f", en->density);
-						// log("Pressure Force: %f, %f", en->pressure_force.x, en->pressure_force.y);
-						// log("Pressure Accel: %f, %f", en->pressure_acceleration.x, en->pressure_acceleration.y);
 
 						break;
 
@@ -273,6 +242,7 @@ int entry(int argc, char **argv) {
 		seconds_counter += delta_t;
 		frame_count += 1;
 		if (seconds_counter > 1.0) {
+			log("delta_t: %f", delta_t);
 			log("fps: %i\n", frame_count);
 			log("Position: (%f, %f)", particle_en->position.x, particle_en->position.y);
 			log("Velocity: (%f, %f)", particle_en->velocity.x, particle_en->velocity.y);
