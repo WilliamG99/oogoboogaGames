@@ -216,6 +216,8 @@ int entry(int argc, char **argv) {
 
 										float32 distance = v2_length(v2_sub(en_neighbour->position, en->position));
 										Vector2 rij_normal = v2_normalize(v2_sub(en_neighbour->position, en->position));
+										rij_normal.x = -rij_normal.x;
+										rij_normal.y = -rij_normal.y;
 
 										if (distance < SMOOTHING_RADIUS){
 											// Compute pressure force contribution
