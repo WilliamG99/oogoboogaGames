@@ -1,11 +1,11 @@
 #define GRAVITY 9.81
 #define BOUNCE_DAMPING 0.75
 
-#define SMOOTHING_RADIUS 1.2
-#define PARTICLE_MASS 1.5
+#define SMOOTHING_RADIUS 2.0
+#define PARTICLE_MASS 1.0
 
 #define REST_DENSITY 2.75
-#define PRESSURE_CONSTANT 0.5
+#define PRESSURE_CONSTANT 10
 
 typedef enum EntityArchetype {
 	arch_nil = 0,
@@ -32,7 +32,7 @@ typedef struct Entity {
 	Vector2 boundaryPoint2;
 	Vector2 boundaryPoint3;
 } Entity;
-#define MAX_ENTITY_COUNT 1024
+#define MAX_ENTITY_COUNT 4096
 
 typedef struct World {
 	Entity entities[MAX_ENTITY_COUNT];
@@ -60,7 +60,7 @@ void entity_destroy(Entity* entity) {
 void setup_particle(Entity* en) {
 	en->arch = arch_particle;
 	en->mass = PARTICLE_MASS;
-	en->position = v2(0.0, 0.0);
+	en->position = v2(-25.0, -25.0);
 	en->velocity = v2(0.0, 0.0);
 	en->density = 0.0f;
 	en->pressure = 0.0f;
@@ -69,6 +69,32 @@ void setup_particle(Entity* en) {
 
 void setup_boundary(Entity* en) {
 	en->arch = arch_boundary;
+}
+
+// Main functions and calculations
+// Smooting Kernel
+float32 SmoothingKernel(float distance) {
+	if (distance >= SMOOTHING_RADIUS) {return 0.0f;}
+
+	float32 volume = (PI32 * powf(SMOOTHING_RADIUS, 4)) / 6.f;
+	return (SMOOTHING_RADIUS - distance) * (SMOOTHING_RADIUS - distance) / volume;
+}
+// Smoothing Kernel Derivative
+float32 SmoothingKernelDerivative(float32 distance) {
+	if (distance >= SMOOTHING_RADIUS) {return 0.0f;}
+
+	float32 scale = 12.f / (powf(SMOOTHING_RADIUS, 4) * PI32);
+	return (distance - SMOOTHING_RADIUS) * scale;
+}
+// Calculate Pressure
+float32 ConvertDensityToPressure(float32 density) {
+	float32 densityError = density - REST_DENSITY;
+	float32 pressure = densityError * PRESSURE_CONSTANT;
+	return pressure;
+}
+// Calculate Shared Pressure
+float32 CalculateSharedPressure(float32 pressureA, float32 pressureB) {
+	return (pressureA + pressureB) / 2;
 }
 
 int entry(int argc, char **argv) {
@@ -85,10 +111,12 @@ int entry(int argc, char **argv) {
 	Entity* particle_en = entity_create();
 	setup_particle(particle_en);
 
-    for (int i = 0; i < 1000	; i++) {
-        Entity* en = entity_create();
-        setup_particle(en);
-        en->position = v2(get_random_float32_in_range(-10.0, 10.0), get_random_float32_in_range(-10.0, 10.0));
+    for (int i = 0; i < 40	; i++) {
+		for (int j = 0; j < 40	; j++) {
+			Entity* en = entity_create();
+			setup_particle(en);
+			en->position = v2(1.5*i-30, 1.5*j-30);
+		}
     }
 
 	Entity* boundary0_en = entity_create();
@@ -100,10 +128,6 @@ int entry(int argc, char **argv) {
 
 	float64 seconds_counter = 0.0;
 	s32 frame_count = 0;
-
-	// Smoothing Kernels and their Gradients.
-	const float32 kernel = (4.0f / (PI32 * powf(SMOOTHING_RADIUS, 8.0f)));
-	const float32 kernel_derivative = -10.0f / (PI32 * powf(SMOOTHING_RADIUS, 5.0f));
 
 	float64 last_time = os_get_current_time_in_seconds();
 	while (!window.should_close) {
@@ -130,8 +154,9 @@ int entry(int argc, char **argv) {
 						// Particle Updates
 						// Velocity
 						//en->velocity = v2_add(en->velocity, v2_mulf(v2(0.0, -GRAVITY), delta_t));
-						en->velocity = v2_add(en->velocity, en->pressure_acceleration);
-						//en->velocity = v2_add(en->velocity, v2_mulf(en->pressure_acceleration, delta_t));
+						// en->velocity = v2_add(en->velocity, en->pressure_acceleration);
+						//en->velocity = en->pressure_acceleration;
+						en->velocity = v2_add(en->velocity, v2_mulf(en->pressure_acceleration, delta_t));
 						// Position
 						en->position = v2_add(en->position, v2_mulf(en->velocity, delta_t));
 
@@ -181,11 +206,8 @@ int entry(int argc, char **argv) {
 
 										// Calculate Density
 										float32 distance = v2_length(v2_sub(en_neighbour->position, en->position));
-										float32 sqrd_distance = square(distance);
-										
-										if (sqrd_distance < square(SMOOTHING_RADIUS)) {
-											en->density += PARTICLE_MASS * kernel * powf(square(SMOOTHING_RADIUS)-sqrd_distance, 3.0f);
-										}
+										float32 influence = SmoothingKernel(distance);
+										en->density += PARTICLE_MASS * influence;
 
 										// log("Pos1: %f, %f", en_neighbour->position.x, en_neighbour->position.y);
 										// log("Pos2: %f, %f", en->position.x, en->position.y);
@@ -201,7 +223,7 @@ int entry(int argc, char **argv) {
 						}
 
 						// Calculate Pressure
-						en->pressure = PRESSURE_CONSTANT * (en->density - REST_DENSITY);
+						en->pressure = ConvertDensityToPressure(en->density);
 
 						// Search Neighbour Particles to Calculate Forces
 						for (int j = 0; j < MAX_ENTITY_COUNT; j++) {
@@ -214,15 +236,13 @@ int entry(int argc, char **argv) {
 
 										if(en == en_neighbour || en_neighbour->density == 0.0f){break;}
 
+										// Calculate Pressure Force
 										float32 distance = v2_length(v2_sub(en_neighbour->position, en->position));
-										Vector2 rij_normal = v2_normalize(v2_sub(en_neighbour->position, en->position));
-										rij_normal.x = -rij_normal.x;
-										rij_normal.y = -rij_normal.y;
-
-										if (distance < SMOOTHING_RADIUS){
-											// Compute pressure force contribution
-											en->pressure_force = v2_add(en->pressure_force, v2_mulf(rij_normal, PARTICLE_MASS * (en->pressure + en_neighbour->pressure) / (2.0f * en_neighbour->density) * kernel_derivative * powf(SMOOTHING_RADIUS - distance, 3.0f)));
-										}
+										Vector2 direction = v2_divf(v2_sub(en_neighbour->position, en->position), distance);
+										float32 slope = SmoothingKernelDerivative(distance);
+										//log("%f", slope);
+										float32 sharedPressure = CalculateSharedPressure(en->pressure, en_neighbour->pressure);
+										en->pressure_force = v2_add(v2_mulf(direction, -sharedPressure * slope * PARTICLE_MASS / en_neighbour->density), en->pressure_force);
 
 										break;
 
@@ -232,7 +252,7 @@ int entry(int argc, char **argv) {
 							}
 						}
 
-						// Apply Forces
+						// Calculate Pressure Force Acceleration
 						en->pressure_acceleration = v2_divf(en->pressure_force, en->density);
 
 						break;
