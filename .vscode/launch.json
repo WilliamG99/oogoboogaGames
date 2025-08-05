@@ -5,25 +5,25 @@
             "name": "Launch Debug with MSVC Debugger",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/cgame.exe", // Run the output executable after compile
+            "program": "${workspaceFolder}/build/cgame.exe",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
-            "console":"integratedTerminal",
+            "console": "integratedTerminal",
             "preLaunchTask": "Compile"
         },
         {
             "name": "Launch Release with MSVC Debugger",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/release/cgame.exe", // Run the output executable after compile
+            "program": "${workspaceFolder}/build/release/cgame.exe",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
-            "console":"integratedTerminal",
+            "console": "integratedTerminal",
             "preLaunchTask": "Compile Release"
-        }
+        },
     ]
 }

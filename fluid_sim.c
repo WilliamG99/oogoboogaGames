@@ -1,13 +1,13 @@
 #define GRAVITY 9.81
 #define BOUNCE_DAMPING 0.8
 
-#define SMOOTHING_RADIUS 3
-#define PARTICLE_MASS 3.0
+#define SMOOTHING_RADIUS 3.0
+#define PARTICLE_MASS 1.0
 
 #define REST_DENSITY 2.75
-#define PRESSURE_CONSTANT 5
+#define PRESSURE_CONSTANT 25.0
 
-#define PARTICLE_NUM 20
+#define PARTICLE_NUM 12
 
 typedef enum EntityArchetype {
 	arch_nil = 0,
@@ -22,8 +22,8 @@ typedef struct Entity {
 	int index;
 	Vector2 position;
 	Vector2i cell_position;
-	int hash;
-	int cell_key;
+	int32 hash;
+	int16 cell_key;
 	Vector2 velocity;
 	Vector2 acceleration;
 	float32 density;
@@ -63,7 +63,7 @@ void entity_destroy(Entity* entity) {
 
 void setup_particle(Entity* en) {
 	en->arch = arch_particle;
-	en->position = v2(-25.0, -25.0);
+	en->position = v2(0.0, 0.0);
 	en->velocity = v2(0.0, 0.0);
 	en->density = 0.0f;
 	en->pressure = 0.0f;
@@ -77,14 +77,14 @@ void setup_boundary(Entity* en) {
 // Main functions and calculations
 // Smooting Kernel
 float32 SmoothingKernel(float distance) {
-	if (distance > SMOOTHING_RADIUS) {return 0.0f;}
+	if (distance >= SMOOTHING_RADIUS) {return 0.0f;}
 
 	float32 volume = (PI32 * powf(SMOOTHING_RADIUS, 4)) / 6.f;
 	return (SMOOTHING_RADIUS - distance) * (SMOOTHING_RADIUS - distance) / volume;
 }
 // Smoothing Kernel Derivative
 float32 SmoothingKernelDerivative(float32 distance) {
-	if (distance > SMOOTHING_RADIUS) {return 0.0f;}
+	if (distance >= SMOOTHING_RADIUS) {return 0.0f;}
 
 	float32 scale = 12.f / (powf(SMOOTHING_RADIUS, 4) * PI32);
 	return (distance - SMOOTHING_RADIUS) * scale;
@@ -102,37 +102,33 @@ float32 CalculateSharedPressure(float32 pressureA, float32 pressureB) {
 
 // Cell Linked List Optimisation
 // Constants for Hashing
-const int hash1 = 3079;
-const int hash2 = 6151;
+const int hash1 = 15823;
+const int hash2 = 9737333;
 // Get 2D Cell Co-ordinates from particle position
 Vector2i Get2DCell(Vector2 position) {
-	float x = position.x;
-	float y = position.y;
-	int cellX = floorf((x + 120) / (int)SMOOTHING_RADIUS);
-	int cellY = floorf((y + 70) / (int)SMOOTHING_RADIUS);
+	int cellX = (int)floorf(position.x / SMOOTHING_RADIUS);
+	int cellY = (int)floorf(position.y / SMOOTHING_RADIUS);
 	return v2i(cellX, cellY);
 }
 // Hash Cell Co-ordinates into a single Int
-int GetHash2DCell(Vector2i cell_coord) {
-	int x = cell_coord.x;
-	int y = cell_coord.y;
-	int a = x * hash1;
-	int b = y * hash2;
+int GetHashFrom2DCell(Vector2i cell_coord) {
+	int a = cell_coord.x * hash1;
+	int b = cell_coord.y * hash2;
 	return a+b;
 }
 // Hash to Key
-int HashToKey(int hash) {
+int GetKeyFromHash(int hash) {
 	return hash % (PARTICLE_NUM * PARTICLE_NUM);
 }
 // Struct for Lookup Array Data
 struct SpatialLookupStruct {
-	Entity* index;
-	int key;
+	int16 index;
+	int16 key;
 };
 // Comparison Function for Sorting based on Cell Key
 int CompareByKey(const void* a, const void* b) {
-    int key_a = ((struct SpatialLookupStruct*)a)->index->cell_key;
-    int key_b = ((struct SpatialLookupStruct*)b)->index->cell_key;
+    int16 key_a = ((struct SpatialLookupStruct*)a)->key;
+    int16 key_b = ((struct SpatialLookupStruct*)b)->key;
     return (key_a < key_b) ? -1 : (key_a > key_b);
 }
 
@@ -146,24 +142,26 @@ int entry(int argc, char **argv) {
 
 	world = alloc(get_heap_allocator(), sizeof(World));
 	memset(world, 0, sizeof(World));
-
+	
 	// Initialise An Array of Structs
-	struct SpatialLookupStruct SpatialLookupArray[PARTICLE_NUM*PARTICLE_NUM] = { 0 };
-	// Initialise Array for Inidicie Start
-	int StartIndicies[PARTICLE_NUM*PARTICLE_NUM] = { 0 };
+	struct SpatialLookupStruct SpatialLookup[PARTICLE_NUM*PARTICLE_NUM];
 
+	// Setup Particles
 	int k = 0;
-    for (int i = 0; i < PARTICLE_NUM; i++) {
-		for (int j = 0; j < PARTICLE_NUM; j++) {
+    for (int i = 0; i < PARTICLE_NUM	; i++) {
+		for (int j = 0; j < PARTICLE_NUM	; j++) {
 			Entity* en = entity_create();
 			setup_particle(en);
-			en->position = v2(1.5*i-7.5, 1.5*j-7.5);
+			en->position = v2(1.5*i-3, 1.5*j-3 );
+			
 			en->index = k;
-			SpatialLookupArray[k].index = &world->entities[k];
-			//log("Index Address: %p", SpatialLookupArray[k].index);
+			SpatialLookup[k].index = k;
 			k++;
 		}
     }
+
+	// Initialise Array for Inidicie Start
+	int StartIndicies[PARTICLE_NUM*PARTICLE_NUM];
 
 	Entity* boundary0_en = entity_create();
 	setup_boundary(boundary0_en);
@@ -188,163 +186,6 @@ int entry(int argc, char **argv) {
 		last_time = now;
 
 		os_update();
-
-		// Cell Linked List
-		for (int i = 0; i < MAX_ENTITY_COUNT; i++) {
-			Entity* en = &world->entities[i];
-			if (en->is_valid) {
-
-				switch (en->arch) {
-
-					case arch_particle:
-						// Cell Linked List Optimisation
-						en->cell_position = Get2DCell(en->position);
-						en->hash = GetHash2DCell(en->cell_position);
-						en->cell_key = HashToKey(en->hash);
-						SpatialLookupArray[i].index->cell_key = en->cell_key;
-						//int n = sizeof(SpatialLookupArray) / sizeof(SpatialLookupArray[0]);
-						//qsort(SpatialLookupArray, n, sizeof(struct SpatialLookupStruct), CompareByKey);
-
-						//log("%i %i", SpatialLookupArray[0].index, SpatialLookupArray[0].index->cell_key);
-
-						break;
-						
-					default:
-					{break;}
-				}
-			}
-		}
-
-		int n = sizeof(SpatialLookupArray) / sizeof(SpatialLookupArray[0]);
-		qsort(SpatialLookupArray, n, sizeof(struct SpatialLookupStruct), CompareByKey);
-
-		int StartIndicies[PARTICLE_NUM*PARTICLE_NUM] = { 0 };
-
-		for (int i = 0; i < MAX_ENTITY_COUNT; i++) {
-			Entity* en = &world->entities[i];
-			if (en->is_valid) {
-
-				switch (en->arch) {
-
-					case arch_particle:
-											
-						// Set Start Indicies Array with change of Cell Key
-						if (i > 0 && SpatialLookupArray[i].index->cell_key != SpatialLookupArray[i-1].index->cell_key) {
-							StartIndicies[SpatialLookupArray[i].index->cell_key] = i;
-							// log("%i", StartIndicies[en->cell_key]);
-						}
-						break;
-		
-					default:
-					{break;}
-				}
-			}
-		}
-
-		for (int i = 0; i < MAX_ENTITY_COUNT; i++) {
-			Entity* en = &world->entities[i];
-			if (en->is_valid) {
-
-				switch (en->arch) {
-
-					case arch_particle:
-						// Reset Particle Properties
-						//log("Density: %f", en->density);
-						en->density = 0.0f;
-						en->pressure = 0.0f;
-						en->pressure_force = v2(0.0f, 0.0f);
-						
-						// For Each Neighbour Particle Within Particle Radius
-						// Loop through 3x3 cells around the centre cell
-						for (int x = 0; x < 3; x++) {
-							for (int y = 0; y < 3; y++) {
-								Vector2i cell_position = v2i_sub(en->cell_position, v2i(x-1, y-1));
-
-								if (cell_position.x <= -1 || cell_position.x >= 80){break;}
-								else if (cell_position.y <= -1 || cell_position.y >= 47)
-								{continue;}
-								
-
-								int cell_key = HashToKey(GetHash2DCell(cell_position));
-								int cell_start_index = StartIndicies[cell_key];
-
-								// With key of current cell, loop over all points with the same key
-								for (int z = cell_start_index; z < square(PARTICLE_NUM); z++) {
-
-									if (SpatialLookupArray[z].index->cell_key != cell_key) {break;}
-
-									//log("Memory Address Index: %p", SpatialLookupArray[z].index);
-
-									Entity* en_neighbour = SpatialLookupArray[z].index;
-
-									float32 distance = v2_length(v2_sub(en_neighbour->position, en->position));
-
-									if (distance <= SMOOTHING_RADIUS) {
-										// Calculate Density;
-										float32 influence = SmoothingKernel(distance);
-										en->density += PARTICLE_MASS * influence;
-									}
-								}
-							} 
-						}
-						
-						// Calculate Pressure
-						en->pressure = ConvertDensityToPressure(en->density);
-
-						for (int x = 0; x < 3; x++) {
-							for (int y = 0; y < 3; y++) {
-								Vector2i cell_position = v2i_sub(en->cell_position, v2i(x-1, y-1));
-
-								if (cell_position.x <= -1 || cell_position.x >= 80){break;}
-								else if (cell_position.y <= -1 || cell_position.y >= 47)
-								{continue;}
-
-								int cell_key = HashToKey(GetHash2DCell(cell_position));
-								int cell_start_index = StartIndicies[cell_key];
-
-								// With key of current cell, loop over all points with the same key
-								for (int z = cell_start_index; z < square(PARTICLE_NUM); z++) {
-
-									if (SpatialLookupArray[z].index->cell_key != cell_key) {break;}
-
-									//log("Memory Address Index: %p", SpatialLookupArray[z].index);
-
-									Entity* en_neighbour = SpatialLookupArray[z].index;
-
-									float32 distance = v2_length(v2_sub(en_neighbour->position, en->position));
-
-									if (distance <= SMOOTHING_RADIUS) {
-										if(en == en_neighbour || en_neighbour->density == 0.0f){continue;}
-
-										// Calculate Pressure Force
-										float32 distance = v2_length(v2_sub(en_neighbour->position, en->position));
-										Vector2 direction = v2_divf(v2_sub(en_neighbour->position, en->position), distance);
-										float32 slope = SmoothingKernelDerivative(distance);
-										//log("%f", slope);
-										float32 sharedPressure = CalculateSharedPressure(en->pressure, en_neighbour->pressure);
-										en->pressure_force = v2_add(v2_mulf(direction, -sharedPressure * slope * PARTICLE_MASS / en_neighbour->density), en->pressure_force);
-
-									}
-								}
-							} 
-						}
-
-
-						// Calculate Pressure Force Acceleration
-						if (en->density > 0.0f) {
-							en->pressure_acceleration = v2_divf(en->pressure_force, en->density);
-						} else {
-							en->pressure_acceleration = v2f32_zero;
-						}
-
-						break;
-						
-					default:
-					{break;}
-				}
-			}
-		}
-
 
 		// :render
 		for (int i = 0; i < MAX_ENTITY_COUNT; i++) {
@@ -377,12 +218,12 @@ int entry(int argc, char **argv) {
 						else if (en->position.x <= -120.0)
 						{
 							en->position.x = -119.9;
-							en->velocity.x = -(en->velocity.y * BOUNCE_DAMPING);
+							en->velocity.x = -(en->velocity.x * BOUNCE_DAMPING);
 						}
 						else if (en->position.x >= 120.0)
 						{
 							en->position.x = 119.9;
-							en->velocity.x = -(en->velocity.y * BOUNCE_DAMPING);
+							en->velocity.x = -(en->velocity.x * BOUNCE_DAMPING);
 						}
 						
 						// Particle Transform
@@ -391,6 +232,93 @@ int entry(int argc, char **argv) {
 						xform			= m4_translate(xform, v3(en->position.x, en->position.y, 0));
 						xform			= m4_translate(xform, v3(size.x * -0.5, size.y * -0.5, 0));
 						draw_circle_xform(xform, size, COLOR_WHITE);
+
+						// Cell Linked List Optimisation
+						// Calculate Cell Co-ordinates with Particel Position
+						en->cell_position = Get2DCell(en->position);
+						// Convert Co-ords into Hash
+						en->hash = GetHashFrom2DCell(en->cell_position);
+						
+						// Hash to Key
+						en->cell_key = GetKeyFromHash(en->hash);
+						// Add Cell Keys to Array Struct
+						SpatialLookup[i].key = en->cell_key;
+						int16 n = sizeof(SpatialLookup) / sizeof(SpatialLookup[0]);
+						qsort(SpatialLookup, n, sizeof(struct SpatialLookupStruct), CompareByKey);
+ 
+						//log("%i %i", SpatialLookup[0].index, SpatialLookup[0].key);
+						
+						// Set Start Indicies of each Cell to an Array
+						if (i > 0 && SpatialLookup[i].key != SpatialLookup[i-1].key) {
+							StartIndicies[en->cell_key] = i;
+							//log("%i", StartIndicies[en->cell_key]);
+						}
+
+						// Reset Particle Properties
+						//log("Density: %f", en->density);
+						en->density = 0.0f;
+						en->pressure = 0.0f;
+						en->pressure_force = v2(0.0f, 0.0f);
+
+						// Search Neighbour Particles to Calculate Density
+						for (int j = 0; j < MAX_ENTITY_COUNT; j++) {
+							Entity* en_neighbour = &world->entities[j];
+							if (en_neighbour->is_valid) {
+								
+								switch (en_neighbour->arch) {
+
+									case arch_particle:
+
+										// Calculate Density
+										float32 distance = v2_length(v2_sub(en_neighbour->position, en->position));
+										float32 influence = SmoothingKernel(distance);
+										en->density += PARTICLE_MASS * influence;
+
+										// log("Pos1: %f, %f", en_neighbour->position.x, en_neighbour->position.y);
+										// log("Pos2: %f, %f", en->position.x, en->position.y);
+										// log("Sub: %f, %f", sub.x, sub.y);
+										// log("Distance: %f", distance);
+
+										break;
+
+									default:
+										break;
+								}
+							}
+						}
+
+						// Calculate Pressure
+						en->pressure = ConvertDensityToPressure(en->density);
+
+						// Search Neighbour Particles to Calculate Forces
+						for (int j = 0; j < MAX_ENTITY_COUNT; j++) {
+							Entity* en_neighbour = &world->entities[j];
+							if (en_neighbour->is_valid) {
+								
+								switch (en_neighbour->arch) {
+
+									case arch_particle:
+
+										if(en == en_neighbour || en_neighbour->density == 0.0f){break;}
+
+										// Calculate Pressure Force
+										float32 distance = v2_length(v2_sub(en_neighbour->position, en->position));
+										Vector2 direction = v2_divf(v2_sub(en_neighbour->position, en->position), distance);
+										float32 slope = SmoothingKernelDerivative(distance);
+										//log("%f", slope);
+										float32 sharedPressure = CalculateSharedPressure(en->pressure, en_neighbour->pressure);
+										en->pressure_force = v2_add(v2_mulf(direction, -sharedPressure * slope * PARTICLE_MASS / en_neighbour->density), en->pressure_force);
+
+										break;
+
+									default:
+										break;
+								}
+							}
+						}
+
+						// Calculate Pressure Force Acceleration
+						en->pressure_acceleration = v2_divf(en->pressure_force, en->density);
 
 						break;
 
@@ -408,7 +336,11 @@ int entry(int argc, char **argv) {
 						// draw_circle_xform(xform, v2(1, 1), COLOR_WHITE);
 						break;
 					}
+					
 				}
+
+				// int16 n = sizeof(SpatialLookup) / sizeof(SpatialLookup[0]);
+				// qsort(SpatialLookup, n, sizeof(struct SpatialLookupStruct), CompareByKey);
 			}
 		}
 
@@ -417,25 +349,103 @@ int entry(int argc, char **argv) {
 			window.should_close = true;
 		}
 
-		Entity* particle_en = &world->entities[0];
-
 		gfx_update();
 		seconds_counter += delta_t;
 		frame_count += 1;
+
+		Entity* particle_en = &world->entities[0];
+		Entity* particle_en2 = &world->entities[1];
+		Entity* particle_en3 = &world->entities[2];
+		Entity* particle_en4 = &world->entities[3];
+		Entity* particle_en5 = &world->entities[4];
+		Entity* particle_en6 = &world->entities[5];
+		Entity* particle_en7 = &world->entities[6];
+		Entity* particle_en8 = &world->entities[7];
+		Entity* particle_en9 = &world->entities[8];
+
+
+		
 		if (seconds_counter > 1.0) {
-			log("delta_t: %f", delta_t);
-			log("fps: %i\n", frame_count);
-			log("Spatial Lookup: %i, %i", SpatialLookupArray[0].index->index, SpatialLookupArray[0].index->cell_key);
+
 			log("Index: (%i)", particle_en->index);
+			log("Position: (%f, %f)", particle_en->position.x, particle_en->position.y);
 			log("Hash: (%i)", particle_en->hash);
 			log("Cell Key: (%i)", particle_en->cell_key);
-			log("Cell Position: (%i, %i)", particle_en->cell_position.x, particle_en->cell_position.y);
-			log("Position: (%f, %f)", particle_en->position.x, particle_en->position.y);
+			log("Cell Position: (%i, %i) ", particle_en->cell_position.x, particle_en->cell_position.y);
 			log("Velocity: (%f, %f)", particle_en->velocity.x, particle_en->velocity.y);
-			log("Density: %f", particle_en->density);
-			log("Pressure: %f", particle_en->pressure);
-			log("Pressure Force: %f, %f", particle_en->pressure_force.x, particle_en->pressure_force.y);
-			log("Pressure Accel: %f, %f\n", particle_en->pressure_acceleration.x, particle_en->pressure_acceleration.y);
+			log("\n");
+			
+			log("Index: (%i)", particle_en2->index);
+			log("Position: (%f, %f)", particle_en2->position.x, particle_en2->position.y);
+			log("Hash: (%i)", particle_en2->hash);
+			log("Cell Key: (%i)", particle_en2->cell_key);
+			log("Cell Position: (%i, %i)", particle_en2->cell_position.x, particle_en2->cell_position.y);
+			log("Velocity: (%f, %f)", particle_en2->velocity.x, particle_en2->velocity.y);
+			log("\n");
+		
+			log("Index: (%i)", particle_en3->index);
+			log("Position: (%f, %f)", particle_en3->position.x, particle_en3->position.y);
+			log("Hash: (%i)", particle_en3->hash);
+			log("Cell Key: (%i)", particle_en3->cell_key);
+			log("Cell Position: (%i, %i)", particle_en3->cell_position.x, particle_en3->cell_position.y);
+			log("Velocity: (%f, %f)", particle_en3->velocity.x, particle_en3 ->velocity.y);
+			log("\n");
+
+			log("Index: (%i)", particle_en4->index); 
+			log("Position: (%f, %f)", particle_en4->position.x, particle_en4->position.y);
+			log("Cell Key: (%i)", particle_en4->cell_key);
+			log("Cell Position: (%i, %i)", particle_en4->cell_position.x, particle_en4->cell_position.y);
+			log("Velocity: (%f, %f)", particle_en4->velocity.x, particle_en4->velocity.y);
+			log("\n");
+
+			log("Index: (%i)", particle_en5->index);
+			log("Position: (%f, %f)", particle_en5->position.x, particle_en5->position.y);
+			log("Cell Key: (%i)", particle_en5->cell_key);
+			log("Cell Position: (%i, %i)", particle_en5->cell_position.x, particle_en5->cell_position.y);
+			log("Velocity: (%f, %f)", particle_en5->velocity.x, particle_en5->velocity.y);
+			log("\n");
+
+			log("Index: (%i)", particle_en6->index);
+			log("Position: (%f, %f)", particle_en6->position.x, particle_en6->position.y);
+			log("Cell Key: (%i)", particle_en6->cell_key);
+			log("Cell Position: (%i, %i)", particle_en6->cell_position.x, particle_en6->cell_position.y);
+			log("Velocity: (%f, %f)", particle_en6->velocity.x, particle_en6->velocity.y);
+			log("\n");
+
+			log("Index: (%i)", particle_en7->index);
+			log("Position: (%f, %f)", particle_en7->position.x, particle_en7->position.y);
+			log("Cell Key: (%i)", particle_en7->cell_key);
+			log("Cell Position: (%i, %i)", particle_en7->cell_position.x, particle_en7->cell_position.y);
+			log("Velocity: (%f, %f)", particle_en7->velocity.x, particle_en7->velocity.y);
+			log("\n");
+
+			log("Index: (%i)", particle_en8->index);
+			log("Position: (%f, %f)", particle_en8->position.x, particle_en8->position.y);
+			log("Cell Key: (%i)", particle_en8->cell_key);
+			log("Cell Position: (%i, %i)", particle_en8->cell_position.x, particle_en8->cell_position.y);
+			log("Velocity: (%f, %f)", particle_en8->velocity.x, particle_en8->velocity.y);
+			log("\n");
+
+			log("Index: (%i)", particle_en9->index);
+			log("Position: (%f, %f)", particle_en9 ->position.x, particle_en9->position.y);
+			log("Cell Key: (%i)", particle_en9->cell_key);
+			log("Cell Position: (%i, %i)", particle_en9->cell_position.x, particle_en9->cell_position.y);
+			log("Velocity: (%f, %f)", particle_en9->velocity.x, particle_en9->velocity.y);
+			log("\n");
+
+			// log("delta_t: %f", delta_t);
+			// log("fps: %i\n", frame_count);
+			// log("Spatial Lookup: %i, %i", SpatialLookup[0].index, SpatialLookup[0].key);
+			// log("Index: (%i)", particle_en->index);
+			// log("Hash: (%i)", particle_en->hash);
+			// log("Cell Key: (%i)", particle_en->cell_key);
+			// log("Cell Position: (%i, %i)", particle_en->cell_position.x, particle_en->cell_position.y);
+			// log("Position: (%f, %f)", particle_en->position.x, particle_en->position.y);
+			// log("Velocity: (%f, %f)", particle_en->velocity.x, particle_en->velocity.y);
+			// log("Density: %f", particle_en->density);
+			// log("Pressure: %f", particle_en->pressure);
+			// log("Pressure Force: %f, %f", particle_en->pressure_force.x, particle_en->pressure_force.y);
+			// log("Pressure Accel: %f, %f\n", particle_en->pressure_acceleration.x, particle_en->pressure_acceleration.y);
 			seconds_counter = 0.0;
 			frame_count = 0;
 		}
