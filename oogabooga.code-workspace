@@ -9,7 +9,14 @@
 			"algorithm": "c",
 			"limits": "c",
 			"utility": "c",
-			"xutility": "c"
+			"xutility": "c",
+			"cimgui.cpp": "c",
+			"imgui_impl_opengl3.cpp": "c",
+			"imconfig.h": "c",
+			"imgui.h": "c",
+			"nuklear.h": "c",
+			"nuklear_d3d11.h": "c",
+			"stdarg.h": "c"
 		}
 	}
 }
