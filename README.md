@@ -1,128 +1,76 @@
+# Real-Time Fluid Simulation using Smoothed-Particle Hydrodynamics
 
-ooga booga
+**Author:** William M. Garcia  
+**Module:** CMP-6013Y – Final Year Project  
+**Supervisor:** Prof. Stephen Laycock  
+**University of East Anglia, 2024/25**
 
-## TOC
-- [What is ooga booga?](#what-is-ooga-booga)
-	- [A new C Standard](#a-new-c-standard)
-	- [SIMPLICITY IS KING](#simplicity-is-king)
-	- [The "Build System"](#the-build-system)
-- [Course: From Scratch to Steam](#course-from-scratch-to-steam)
-- [Quickstart](#quickstart)
-- [Examples & Documentation](#examples--documentation)
-- [Known bugs](#known-bugs)
-- [Licensing](#licensing)
-- [Contributions](#contributions)
+## About
+This project implements a real-time 2D fluid simulation using Smoothed‑Particle Hydrodynamics (SPH).  
+It is built in C on top of the [Ooga Booga](https://github.com/baldgg/oogabooga) engine, a custom game-development framework that provides rendering via DirectX 11, input handling, and a minimal standard library.
 
-## What is ooga booga?
+The simulation supports:
+- Up to several thousand interacting fluid particles.
+- Real‑time parameter tuning through an on‑screen UI.
+- Mouse attraction (left button) and repulsion (right button).
+- Spatial hashing (cell‑linked list) for efficient neighbour search.
 
-Ooga booga, often referred to as a *game engine* for simplicity, is more so designed to be a new C Standard, i.e. a new way to develop software from scratch in C. Other than `<math.h>` we don't include a single C std header, but are instead writing a better standard library heavily optimized for developing games. Except for some image & audio file decoding, Ooga booga does not rely on any other third party code.
+## Requirements
+- **Windows 10/11 (64‑bit)**
+- **Visual Studio Build Tools 2022** with the **Desktop Development with C++** workload  
+  - Ensure `MSVC v143 - VS 2022 C++ x64/x86 build tools` and `Windows 11 SDK` are selected during installation.
+- **LLVM** (Clang) – version 18.1.7 or later  
+  - Download from [LLVM releases](https://github.com/llvm/llvm-project/releases) and check **"Add to PATH"** during installation.
+- **Visual Studio Code** with the **C/C++** extension installed.
+- **Git** (to clone the repository, if not already present).
 
-### A new C Standard
+## Folder Structure
+/
+├── src/ # Main simulation source code
+├── build/ # (Generated) build output and executable
+├── oogabooga.code-workspace # VS Code workspace file
+├── README.md # This file
+└── ...
 
-Let's face it. The C standard is terrible. Don't even get me started on `string.h`. To be fair, any mainstream language standard is terrible. 
+## How to Build and Run
 
-So what if we could strip out the nonsense standard of C and slap on something that's specifically made for video games, prioritizing speed and *simplicity*?
+1. **Open the project in VS Code**  
+   Double‑click `oogabooga.code-workspace` or open VS Code → File → Open Workspace from File… and select it.
 
-That's exactly what oogabooga sets out to do.
+2. **Install the C/C++ extension** (if not already installed)  
+   In VS Code, go to the Extensions view (`Ctrl+Shift+X`) and install **C/C++** by Microsoft.
 
-### SIMPLICITY IS KING
+3. **Run the Build Task**  
+   - Press `Ctrl+Shift+P` to open the command palette.  
+   - Type **`Run Build Task`** and select it.  
+   - The build process will compile the engine and the simulation; a `build` folder will appear.
 
-Ooga booga is designed to keep things simple, and let you solve video game problems the simplest way possible.
+4. **Launch the simulation**  
+   - After a successful build, press `F3` to start the application with the MSVC Debugger.  
+   - Alternatively, run the executable found inside the `build` folder directly.
 
-What we mean by simple, is twofold:
+## Controls
 
-1. <b>Simple to use</b><br>
-	Performing SIMPLE and TRIVIAL tasks should be ... SIMPLE. If you want to draw a rectangle, there should be a single procedure to draw a rectangle. If you want to play an audio clip, there should be a single procedure to play an audio clip. Etc. This is something OS & Graphics API's tend to be fascinatingly terrible at even for the most trivial of tasks, and that is a big chunk of what we set out to solve.
+| Input                         | Action                                                          |
+|-------------------------------|-----------------------------------------------------------------|
+| **Left mouse button** (hold)  | Attract particles toward the cursor                             |
+| **Right mouse button** (hold) | Repel particles away from the cursor                            |
+| **Escape**                    | Quit the simulation                                             |
+| **On‑screen UI panel**        | Click a parameter field, type a value, press Enter to update it |
+|-------------------------------|-----------------------------------------------------------------|
 
-2. <b>Simple to understand</b><br>
-	When you need to do something more complicated, you need to understand the library you're working with. For some reason, it seems like it's a standard for libraries today to obscure the implementation details as much as possible spread out in layers and layers of procedure calls and abstractions. This is terrible.
-	In Oogabooga, there is none of that. We WANT you to delve into our implementations and see exactly what we do. We do not hide ANYTHING from you. We do not impose RESTRICTIONS on how you solve problems. If you need to know what a procedure does, you search for the symbol and look at the implementation code. That's it.
+The UI panel allows real‑time adjustment of:
+- Gravity
+- Smoothing radius
+- Particle mass
+- Rest density
+- Pressure / near‑pressure constants
+- Viscosity
+- Interaction radius / strength
 
-	
-### The "Build System"
+## Note for the Marker
+The simulation source code is the file that was originally shared in the conversation. All dependencies (the Ooga Booga engine) are included in the project folder. The build process automatically fetches and compiles everything needed. If you encounter any issues, please ensure the Visual Studio Build Tools and LLVM are correctly installed and that the `PATH` environment variable includes `clang`.
 
-Our build system is a build.c and a build.bat which invokes the clang compiler on build.c. That's it. And we highly discourage anyone from introducing unnecessary complexity like a third party build system (cmake, premake) or to use header files at all whatsoever.
+---
 
-This might sound like we are breaking some law, but we're not. We're using a compiler to compile a file which includes all the other files, it doesn't get simpler. We are NOT using third party software to run the same compiler to compile the same files over and over again and write it all to disk to then try and link it together. That's what we call silly business (and unreasonably slow compile times, without any real benefit).
-
-Oogabooga is made to be used in Unity builds. The idea is that you only include oogabooga.c somewhere in your project, specify the entry (see build.c) and now it's a Oogabooga project. Oogabooga is meant to replace the C standard, so it is not tested with projects which include standard C headers, so that will probably cause issues.
-
-## Course: From Scratch to Steam
-
-This project was started to be used in a course detailing the full ride from starting out making a game to publishing it to Steam. If you're keen on going all-in on getting a small game published to steam within 2-3 months, then check it out for free in our [Skool Community](https://www.skool.com/game-dev).
-
-## Quickstart
-Currently, we only support Windows x64 systems.
-1. Make sure Windows SDK is installed
-2. Install clang, add to path
-2. Clone repo to <project_dir>
-3. Make a file my_file.c in <project_dir>
-```
-int entry(int argc, char **argv) {
-	
-	window.title = STR("Minimal Game Example");
-	window.scaled_width = 1280; // We need to set the scaled size if we want to handle system scaling (DPI)
-	window.scaled_height = 720; 
-	window.x = 200;
-	window.y = 90;
-	window.clear_color = hex_to_rgba(0x6495EDff);
-
-	while (!window.should_close) {
-		reset_temporary_storage();
-		
-		os_update(); 
-		gfx_update();
-	}
-
-	return 0;
-}
-```
-4. in build.c add this line to the bottom
-```
-#include "my_file.c"
-```
-5. Run `build.bat`
-6. Run build/cgame.exe
-7. profit
-
-## Examples & Documentation
-
-In general, we try to leave a nice chunk of documentation in a comment at the top of the source code files when needed.
-An example would be: If you want to understand how to draw things, go to drawing.c and read the comment at the top of the file.
-This is however a WIP and probably not very well-maintained.
-
-The goal is however to have the main form of documentation be in the form of [examples](oogabooga/examples). Seeing things in practice is generally much more informative than theory.
-
-Simply add `#include "oogabooga/examples/some_example.c"` to build.c and compile & run to see the example code in action.
-
-Other than the top-of-file documentation and examples, we have tried to write code that's easy to read & understand i.e. self-documenting. Ideally, a good way of finding what you need is to use your text editor to do a workspace-search for terms related to what you're trying to do and finding related functions/files/documentation.
-
-## Known bugs & issues
-- If DPI changes in runtime, updating window position or size will be a bit weird
-- Converting 24-bit audio files doesn't really work
-- Compiling with msys, cygwin, mingw etc fails
-
-## Licensing
-By default, the repository has an educational license that makes the engine free to use for personal projects.
-
-[Educational license terms](https://github.com/alpinestudios/oogabooga/blob/master/LICENSE.md)
-
-You can obtain the full commercial license by being an active member of the community and making your first game.
-
-[Learn more here](https://www.skool.com/game-dev)
-
-## Contributions
-- Open PR's with `dev` as the base branch
-- Keep it simple, no multi-layer abstractions
-- Keep the implementation code readable, comment confusing code
-- If you're introducing a new file/module, document the API and how to use it at the top of the file
-- Add tests in tests.c if it makes sense to test
-- Run tests (#define RUN_TESTS 1) before submitting PR
-- Don't submit PR's for:
-	- the sake of submitting PR's
-	- Small polishing/tweaks that doesn't really affect the people making games
-- When you submit a PR, please answer these prompts (if you're submitting a bugfix then you can skip this):
-	- What feature/bugfix does this PR implement?
-	- Why do we need this?
-	- Describe at least one specific and practical problem this solves for people developing a game
-	- Does this add complexity/friction for people making games? If so, how do you justify that?
+Enjoy the fluid dynamics!
