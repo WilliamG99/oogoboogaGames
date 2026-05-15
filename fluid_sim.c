@@ -32,7 +32,7 @@
 // float INTERACTION_STRENGTH = 25.0f;
 ////////////////////////////////
 
-#define PARTICLE_NUM 25
+#define PARTICLE_NUM 40
 
 float GRAVITY = 10.0f;
 float BOUNCE_DAMPING = 0.1f;
@@ -585,6 +585,18 @@ int entry(int argc, char **argv) {
 					en->near_density += PARTICLE_MASS * SpikyKernelPow3(dist);
 				}
 			}
+
+			// // Naive all‑particle search (NO spatial hash)
+			// for (int j = 0; j < MAX_ENTITY_COUNT; j++) {
+			// 	Entity* en_n = &world->entities[j];
+			// 	if (!en_n->is_valid || en_n == en || en_n->arch != arch_particle) continue;
+			// 	float32 dist = v2_length(v2_sub(en_n->position, en->position));
+			// 	if (dist < SMOOTHING_RADIUS) {
+			// 		en->density      += PARTICLE_MASS * SpikyKernelPow2(dist);
+			// 		en->near_density += PARTICLE_MASS * SpikyKernelPow3(dist);
+			// 	}
+			// }
+
 		}
 		// // --- LOGGING: AFTER PHASE 3 ---
 		// log("PHASE 3: Density = %f, Near Density = %f", p0->density, p0->near_density);
@@ -657,6 +669,33 @@ int entry(int argc, char **argv) {
 					en->viscosity_force = v2_add(en->viscosity_force, viscosity_impulse);
 				}
 			}
+
+			// // Naive all‑particle force search
+			// for (int j = 0; j < MAX_ENTITY_COUNT; j++) {
+			// 	Entity* en_n = &world->entities[j];
+			// 	if (!en_n->is_valid || en_n == en || en_n->arch != arch_particle || en_n->density == 0.0f) continue;
+			// 	float32 dist = v2_length(v2_sub(en_n->position, en->position));
+			// 	if (dist == 0.0f || dist >= SMOOTHING_RADIUS) continue;
+			// 	Vector2 dir = v2_divf(v2_sub(en_n->position, en->position), dist);
+
+			// 	// Standard pressure
+			// 	float32 sharedP = (en->pressure + en_n->pressure) / 2.0f;
+			// 	float32 slope   = SpikyKernelPow2Derivative(dist);
+			// 	en->pressure_force = v2_add(en->pressure_force,
+			// 		v2_mulf(dir, sharedP * slope * PARTICLE_MASS / en_n->density));
+
+			// 	// Near‑pressure
+			// 	float32 shared_nearP = (en->near_pressure + en_n->near_pressure) / 2.0f;
+			// 	float32 near_slope   = SpikyKernelPow3Derivative(dist);
+			// 	en->pressure_force = v2_add(en->pressure_force,
+			// 		v2_mulf(dir, shared_nearP * near_slope * PARTICLE_MASS / en_n->density));
+
+			// 	// Viscosity
+			// 	Vector2 vel_diff = v2_sub(en_n->velocity, en->velocity);
+			// 	float   influence = Poly6Kernel(dist);
+			// 	en->viscosity_force = v2_add(en->viscosity_force,
+			// 		v2_mulf(vel_diff, VISCOSITY_CONSTANT * influence * PARTICLE_MASS / en_n->density));
+			// }
 		}
 		// // --- LOGGING: AFTER PHASE 5 ---
 		// log("PHASE 5: Total Pressure Force = (%f, %f), Total Viscosity Force = (%f, %f)", p0->pressure_force.x, p0->pressure_force.y, p0->viscosity_force.x, p0->viscosity_force.y);
